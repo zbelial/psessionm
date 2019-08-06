@@ -1,8 +1,8 @@
-;;; psession.el --- Persistent save of elisp objects. -*- lexical-binding: t -*-
+;;; psessionm.el --- Persistent save of elisp objects. -*- lexical-binding: t -*-
 
 ;; Author: Thierry Volpiatto <thierry.volpiatto@gmail.com>
 ;; Copyright (C) 2010~2014 Thierry Volpiatto, all rights reserved.
-;; X-URL: https://github.com/thierryvolpiatto/psession
+;; X-URL: https://github.com/thierryvolpiatto/psessionm
 
 ;; Compatibility: GNU Emacs 24.1+
 ;; Package-Requires: ((emacs "24") (cl-lib "0.5") (async "1.9.3"))
@@ -29,21 +29,21 @@
 (defvar dired-buffers)
 
 
-(defgroup psession nil
+(defgroup psessionm nil
   "Persistent sessions."
   :group 'frames)
 
-(defcustom psession-elisp-objects-default-directory
+(defcustom psessionm-elisp-objects-default-directory
   (locate-user-emacs-file "elisp-objects/")
   "The directory where lisp objects will be stored."
-  :group 'psession
+  :group 'psessionm
   :type 'string)
 
-(defcustom psession-object-to-save-alist
+(defcustom psessionm-object-to-save-alist
   '((extended-command-history . "extended-command-history.el")
     (helm-external-command-history . "helm-external-command-history.el")
     (helm-surfraw-engines-history . "helm-surfraw-engines-history.el")
-    (psession--save-buffers-alist . "psession-save-buffers-alist.el")
+    (psessionm--save-buffers-alist . "psessionm-save-buffers-alist.el")
     (helm-ff-history . "helm-ff-history.el")
     (regexp-search-ring . "regexp-search-ring.el")
     (search-ring . "search-ring.el")
@@ -51,36 +51,31 @@
     (kill-ring . "kill-ring.el")
     (kill-ring-yank-pointer . "kill-ring-yank-pointer.el")
     (register-alist . "register-alist.el")
-    (psession--winconf-alist . "psession-winconf-alist.el"))
+    (psessionm--winconf-alist . "psessionm-winconf-alist.el"))
   "Alist of vars to save persistently.
 It is composed of (var_name . \"var_name.el\").
 Where \"var_name.el\" is the file where to save value of 'var_name.
 
-These variables are saved when `psession-mode' is enabled, you don't
+These variables are saved when `psessionm-mode' is enabled, you don't
 have to add here the `minibuffer-history' variables, instead enable
-`psession-savehist-mode' as a replacement of `savehist-mode'."
-  :group 'psession
+`psessionm-savehist-mode' as a replacement of `savehist-mode'."
+  :group 'psessionm
   :type '(alist :key-type symbol :value-type string))
 
-(defcustom psession-save-buffers-unwanted-buffers-regexp ".*[.]org$\\|diary$\\|[.]newsticker-cache$"
+(defcustom psessionm-save-buffers-unwanted-buffers-regexp ".*[.]org$\\|diary$\\|[.]newsticker-cache$"
   "Regexp matching buffers you don't want to save."
-  :group 'psession
+  :group 'psessionm
   :type 'string)
 
-(defcustom psession-auto-save-delay 300
-  "Delay in seconds to auto-save emacs session."
-  :group 'psession
-  :type 'integer)
-
-(defcustom psession-savehist-ignored-variables nil
+(defcustom psessionm-savehist-ignored-variables nil
   "List of `minibuffer-history' variables to not save."
-  :group 'psession
+  :group 'psessionm
   :type '(repeat symbol))
 
 ;;; The main function to save objects to byte compiled file.
 ;;
 ;; Each object have its own compiled file.
-(defun psession--dump-object-to-file (obj file)
+(defun psessionm--dump-object-to-file (obj file)
   "Save symbol object OBJ to the byte compiled version of FILE.
 OBJ can be any lisp object, list, hash-table, etc...
 Windows configurations and markers are not supported.
@@ -105,24 +100,24 @@ That may not work with Emacs versions <=23.1 for hash tables."
 ;;; Objects (variables to save)
 ;;
 ;;
-(defun psession--dump-object-to-file-save-alist (&optional skip-props)
-  (when psession-object-to-save-alist
-    (cl-loop for (o . f) in psession-object-to-save-alist
-             for abs = (expand-file-name f psession-elisp-objects-default-directory)
+(defun psessionm--dump-object-to-file-save-alist (&optional skip-props)
+  (when psessionm-object-to-save-alist
+    (cl-loop for (o . f) in psessionm-object-to-save-alist
+             for abs = (expand-file-name f psessionm-chosen-session-directory)
              ;; Registers and kill-ring are treated specially.
              do
              (cond ((and (eq o 'register-alist)
                          (symbol-value o))
-                    (psession--dump-object-save-register-alist f skip-props))
+                    (psessionm--dump-object-save-register-alist f skip-props))
                    ((and (boundp o) (symbol-value o))
-                    (psession--dump-object-no-properties o abs skip-props))))))
+                    (psessionm--dump-object-no-properties o abs skip-props))))))
 
-(cl-defun psession--restore-objects-from-directory
-    (&optional (dir psession-elisp-objects-default-directory))
+(cl-defun psessionm--restore-objects-from-directory
+    (&optional (dir psessionm-chosen-session-directory))
   (let ((file-list (directory-files dir t directory-files-no-dot-files-regexp)))
     (cl-loop for file in file-list do (and file (load file)))))
 
-(defun psession--purecopy (object)
+(defun psessionm--purecopy (object)
   (cond ((stringp object)
          (substring-no-properties object))
         ((consp object)
@@ -133,7 +128,7 @@ That may not work with Emacs versions <=23.1 for hash tables."
                   else
                   ;; Proper lists.
                   if (and (consp elm) (null (cdr (last elm))))
-                  collect (psession--purecopy elm)
+                  collect (psessionm--purecopy elm)
                   else
                   ;; Dotted lists.
                   ;; We handle here only dotted list where car and cdr
@@ -152,14 +147,14 @@ That may not work with Emacs versions <=23.1 for hash tables."
                   collect elm))
         (t object)))
 
-(defun psession--dump-object-no-properties (object file &optional skip-props)
+(defun psessionm--dump-object-no-properties (object file &optional skip-props)
   ;; Force not checking properties with SKIP-PROPS.
   (let ((value (symbol-value object)))
     (unless skip-props
-      (set object (psession--purecopy value)))
-    (psession--dump-object-to-file object file)))
+      (set object (psessionm--purecopy value)))
+    (psessionm--dump-object-to-file object file)))
 
-(cl-defun psession--dump-object-save-register-alist (&optional (file "register-alist.el") skip-props)
+(cl-defun psessionm--dump-object-save-register-alist (&optional (file "register-alist.el") skip-props)
   "Save `register-alist' but only supported objects."
   (let ((register-alist (cl-loop for (char . val) in register-alist
                                  unless (or (markerp val)
@@ -168,71 +163,71 @@ That may not work with Emacs versions <=23.1 for hash tables."
                                  collect (cons char (if (stringp val)
                                                         (substring-no-properties val)
                                                       val))))
-        (def-file (expand-file-name file psession-elisp-objects-default-directory)))
-    (psession--dump-object-no-properties 'register-alist def-file skip-props)))
+        (def-file (expand-file-name file psessionm-chosen-session-directory)))
+    (psessionm--dump-object-no-properties 'register-alist def-file skip-props)))
 
 ;;; Persistents window configs
 ;;
 ;;
-(defconst psession--last-winconf "last_session5247")
-(defvar psession--winconf-alist nil)
-(defun psession--window-name ()
+(defconst psessionm--last-winconf "last_session5247")
+(defvar psessionm--winconf-alist nil)
+(defun psessionm--window-name ()
   (let (result)
     (walk-windows (lambda (w) (cl-pushnew (buffer-name (window-buffer w)) result)))
     (mapconcat 'identity result " | ")))
 
 ;;;###autoload
-(defun psession-save-winconf (place)
+(defun psessionm-save-winconf (place)
   "Save persistently current window config to PLACE.
-Arg PLACE is the key of an entry in `psession--winconf-alist'."
-  (interactive (list (let ((name (psession--window-name)))
+Arg PLACE is the key of an entry in `psessionm--winconf-alist'."
+  (interactive (list (let ((name (psessionm--window-name)))
                        (read-string (format "Place (%s) : " name) nil nil name))))
-  (let ((assoc (assoc place psession--winconf-alist))
+  (let ((assoc (assoc place psessionm--winconf-alist))
         (new-conf (list (cons place (window-state-get nil 'writable)))))
     (if assoc
-        (setq psession--winconf-alist (append new-conf
-                                             (delete assoc psession--winconf-alist)))
-        (setq psession--winconf-alist (append new-conf psession--winconf-alist)))))
+        (setq psessionm--winconf-alist (append new-conf
+                                             (delete assoc psessionm--winconf-alist)))
+        (setq psessionm--winconf-alist (append new-conf psessionm--winconf-alist)))))
 
-(defun psession--restore-winconf-1 (conf &optional window ignore)
-  (let ((winconf (assoc conf psession--winconf-alist)))
+(defun psessionm--restore-winconf-1 (conf &optional window ignore)
+  (let ((winconf (assoc conf psessionm--winconf-alist)))
     (if winconf
         (with-selected-frame (last-nonminibuffer-frame)
           (delete-other-windows)
-          (window-state-put (cdr (assoc conf psession--winconf-alist)) window ignore))
-      (user-error "Psession: Invalid window configuration `%s'" conf))))
+          (window-state-put (cdr (assoc conf psessionm--winconf-alist)) window ignore))
+      (user-error "Psessionm: Invalid window configuration `%s'" conf))))
 
 ;;;###autoload
-(defun psession-restore-winconf (conf)
+(defun psessionm-restore-winconf (conf)
   "Restore window config CONF.
-Arg CONF is an entry in `psession--winconf-alist'."
+Arg CONF is an entry in `psessionm--winconf-alist'."
   (interactive (list (completing-read
                       "WinConfig: "
-                      (sort (mapcar 'car psession--winconf-alist) #'string-lessp))))
-  (psession--restore-winconf-1 conf))
+                      (sort (mapcar 'car psessionm--winconf-alist) #'string-lessp))))
+  (psessionm--restore-winconf-1 conf))
 
 ;;;###autoload
-(defun psession-delete-winconf (conf)
-  "Delete window config CONF from `psession--winconf-alist'."
+(defun psessionm-delete-winconf (conf)
+  "Delete window config CONF from `psessionm--winconf-alist'."
   (interactive (list (completing-read
                       "WinConfig: "
-                      (sort (mapcar 'car psession--winconf-alist) #'string-lessp))))
-  (let ((assoc (assoc conf psession--winconf-alist)))
-    (setq psession--winconf-alist (delete assoc psession--winconf-alist))))
+                      (sort (mapcar 'car psessionm--winconf-alist) #'string-lessp))))
+  (let ((assoc (assoc conf psessionm--winconf-alist)))
+    (setq psessionm--winconf-alist (delete assoc psessionm--winconf-alist))))
 
-(defun psession-save-last-winconf ()
+(defun psessionm-save-last-winconf ()
   (unless (and (boundp 'helm-alive-p) helm-alive-p)
-    (psession-save-winconf psession--last-winconf)))
+    (psessionm-save-winconf psessionm--last-winconf)))
 
-(defun psession-restore-last-winconf ()
+(defun psessionm-restore-last-winconf ()
   (run-with-idle-timer
    0.01 nil (lambda ()
-             (psession--restore-winconf-1 psession--last-winconf nil 'safe))))
+             (psessionm--restore-winconf-1 psessionm--last-winconf nil 'safe))))
 
 ;;; Persistents-buffer 
 ;;
 ;;
-(defun psession--save-some-buffers ()
+(defun psessionm--save-some-buffers ()
   (require 'dired)
   (cl-loop with dired-blist = (cl-loop for (_f . b) in dired-buffers
                                        when (buffer-name b)
@@ -245,20 +240,20 @@ Arg CONF is an entry in `psession--winconf-alist'."
                      (not (or (file-remote-p buf-fname)
                               (and (fboundp 'tramp-archive-file-name-p)
                                    (tramp-archive-file-name-p buf-fname))))
-                     (not (string-match  psession-save-buffers-unwanted-buffers-regexp
+                     (not (string-match  psessionm-save-buffers-unwanted-buffers-regexp
                                          buf-fname))
                      (file-exists-p buf-fname))
            collect (cons buf-fname place)))
 
-(defvar psession--save-buffers-alist nil)
-(defun psession--dump-some-buffers-to-list ()
-  (setq psession--save-buffers-alist (psession--save-some-buffers)))
+(defvar psessionm--save-buffers-alist nil)
+(defun psessionm--dump-some-buffers-to-list ()
+  (setq psessionm--save-buffers-alist (psessionm--save-some-buffers)))
 
-(defun psession--restore-some-buffers ()
-  (when psession--save-buffers-alist
-    (let* ((max (length psession--save-buffers-alist))
+(defun psessionm--restore-some-buffers ()
+  (when psessionm--save-buffers-alist
+    (let* ((max (length psessionm--save-buffers-alist))
            (progress-reporter (make-progress-reporter "Restoring buffers..." 0 max)))
-      (cl-loop for (f . p) in psession--save-buffers-alist
+      (cl-loop for (f . p) in psessionm--save-buffers-alist
                for count from 0
                do
                (with-current-buffer (find-file-noselect f 'nowarn)
@@ -267,90 +262,87 @@ Arg CONF is an entry in `psession--winconf-alist'."
                  (progress-reporter-update progress-reporter count)))
       (progress-reporter-done progress-reporter))))
 
-(defun psession-savehist-hook ()
+(defun psessionm-savehist-hook ()
   (unless (or (eq minibuffer-history-variable t)
-              (memq minibuffer-history-variable psession-savehist-ignored-variables))
+              (memq minibuffer-history-variable psessionm-savehist-ignored-variables))
     (cl-pushnew (cons minibuffer-history-variable
                       (concat (symbol-name minibuffer-history-variable) ".el"))
-                psession-object-to-save-alist
+                psessionm-object-to-save-alist
                 :test 'equal)))
 
 ;;;###autoload
-(define-minor-mode psession-savehist-mode
+(define-minor-mode psessionm-savehist-mode
     "Save minibuffer-history variables persistently."
   :global t
-  (if psession-savehist-mode
-      (add-hook 'minibuffer-setup-hook 'psession-savehist-hook)
-    (remove-hook 'minibuffer-setup-hook 'psession-savehist-hook)))
+  (if psessionm-savehist-mode
+      (add-hook 'minibuffer-setup-hook 'psessionm-savehist-hook)
+    (remove-hook 'minibuffer-setup-hook 'psessionm-savehist-hook)))
 
-;;; Auto saving psession
+;;; Auto saving psessionm
 ;;
-(defun psession--get-variables-regexp ()
-  (regexp-opt (cl-loop for (k . _v) in psession-object-to-save-alist
+(defun psessionm--get-variables-regexp ()
+  (regexp-opt (cl-loop for (k . _v) in psessionm-object-to-save-alist
                        collect (symbol-name k))))
 
-(defun psession-save-all-async ()
+(defun psessionm-save-all-async ()
   "Save current emacs session asynchronously."
-  (message "Psession: auto saving session...")
-  (psession-save-last-winconf)
-  (psession--dump-some-buffers-to-list)
+  (message "Psessionm: auto saving session...")
+  (psessionm-save-last-winconf)
+  (psessionm--dump-some-buffers-to-list)
   (async-start
    `(lambda ()
       (add-to-list 'load-path
-                   ,(file-name-directory (locate-library "psession")))
-      (require 'psession)
+                   ,(file-name-directory (locate-library "psessionm")))
+      (require 'psessionm)
       ;; Inject variables without properties.
-      ,(async-inject-variables (format "\\`%s" (psession--get-variables-regexp))
+      ,(async-inject-variables (format "\\`%s" (psessionm--get-variables-regexp))
                                nil nil 'noprops)
       ;; No need to treat properties here it is already done.
-      (psession--dump-object-to-file-save-alist 'skip-props))
+      (psessionm--dump-object-to-file-save-alist 'skip-props))
    (lambda (_result)
-     (message "Psession: auto saving session done"))))
+     (message "Psessionm: auto saving session done"))))
 
-(defvar psession--auto-save-timer nil)
-(defun psession-start-auto-save ()
-  "Start auto-saving emacs session in background."
-  (setq psession--auto-save-timer
-        (run-with-idle-timer
-         psession-auto-save-delay t #'psession-save-all-async)))
 
-(defun psession-auto-save-cancel-timer ()
-  "Cancel psession auto-saving."
-  (when psession--auto-save-timer
-    (cancel-timer psession--auto-save-timer)
-    (setq psession--auto-save-timer nil)))
+(defvar psessionm-chosen-session-directory nil)
+
+(defun psessionm-save-session (directory)
+  "Save current emacs session to directory"
+  (interactive (list (read-directory-name "Save session to " 
+                                          psessionm-elisp-objects-default-directory)))
+  (unless (file-directory-p directory)
+    (make-directory directory))
+
+  (setq psessionm-chosen-session-directory directory)
+
+  (psessionm-save-last-winconf)
+  (psessionm--dump-some-buffers-to-list)
+  (psessionm--dump-object-to-file-save-alist)
+  )
+
+(defun psessionm-restore-session (directory)
+  "Restore emacs session from directory"
+  (interactive (list (read-directory-name "Restore session from " 
+                                          psessionm-elisp-objects-default-directory)))
+
+  (setq psessionm-chosen-session-directory directory)
+
+  (psessionm--restore-objects-from-directory)
+  (psessionm--restore-some-buffers)
+  (psessionm-restore-last-winconf)
+  )
 
 ;;;###autoload
-(define-minor-mode psession-autosave-mode
-    "Auto save emacs session when enabled."
-  :global t
-  (if psession-autosave-mode
-      (psession-start-auto-save)
-    (psession-auto-save-cancel-timer)))
-
-;;;###autoload
-(define-minor-mode psession-mode
+(define-minor-mode psessionm-mode
     "Persistent emacs sessions."
   :global t
-  (if psession-mode
+  (if psessionm-mode
       (progn
-        (unless (file-directory-p psession-elisp-objects-default-directory)
-          (make-directory psession-elisp-objects-default-directory t))
-        (add-hook 'kill-emacs-hook 'psession--dump-object-to-file-save-alist)
-        (add-hook 'emacs-startup-hook 'psession--restore-objects-from-directory)
-        (add-hook 'kill-emacs-hook 'psession--dump-some-buffers-to-list)
-        (add-hook 'emacs-startup-hook 'psession--restore-some-buffers 'append)
-        (add-hook 'kill-emacs-hook 'psession-save-last-winconf)
-        (add-hook 'emacs-startup-hook 'psession-restore-last-winconf 'append)
-        (add-hook 'kill-emacs-hook 'psession-auto-save-cancel-timer))
-    (remove-hook 'kill-emacs-hook 'psession--dump-object-to-file-save-alist)
-    (remove-hook 'emacs-startup-hook 'psession--restore-objects-from-directory)
-    (remove-hook 'kill-emacs-hook 'psession--dump-some-buffers-to-list)
-    (remove-hook 'emacs-startup-hook 'psession--restore-some-buffers)
-    (remove-hook 'kill-emacs-hook 'psession-save-last-winconf)
-    (remove-hook 'emacs-startup-hook 'psession-restore-last-winconf)))
+        (unless (file-directory-p psessionm-elisp-objects-default-directory)
+          (make-directory psessionm-elisp-objects-default-directory t))
+        )
+    ))
 
 
-(provide 'psession)
+(provide 'psessionm)
 
-;;; psession.el ends here
+;;; psessionm.el ends here
