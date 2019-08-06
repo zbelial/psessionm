@@ -278,30 +278,6 @@ Arg CONF is an entry in `psessionm--winconf-alist'."
       (add-hook 'minibuffer-setup-hook 'psessionm-savehist-hook)
     (remove-hook 'minibuffer-setup-hook 'psessionm-savehist-hook)))
 
-;;; Auto saving psessionm
-;;
-(defun psessionm--get-variables-regexp ()
-  (regexp-opt (cl-loop for (k . _v) in psessionm-object-to-save-alist
-                       collect (symbol-name k))))
-
-(defun psessionm-save-all-async ()
-  "Save current emacs session asynchronously."
-  (message "Psessionm: auto saving session...")
-  (psessionm-save-last-winconf)
-  (psessionm--dump-some-buffers-to-list)
-  (async-start
-   `(lambda ()
-      (add-to-list 'load-path
-                   ,(file-name-directory (locate-library "psessionm")))
-      (require 'psessionm)
-      ;; Inject variables without properties.
-      ,(async-inject-variables (format "\\`%s" (psessionm--get-variables-regexp))
-                               nil nil 'noprops)
-      ;; No need to treat properties here it is already done.
-      (psessionm--dump-object-to-file-save-alist 'skip-props))
-   (lambda (_result)
-     (message "Psessionm: auto saving session done"))))
-
 
 (defvar psessionm-chosen-session-directory nil)
 
