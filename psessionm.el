@@ -39,12 +39,23 @@
   :group 'psessionm
   :type 'string)
 
+(defcustom psessionm-auto-save nil
+  "Whether to auto save session or not."
+  :group 'psessionm
+  :type 'boolean)
+
+(defcustom psessionm-auto-restore nil
+  "Whether to auto restore session or not."
+  :group 'psessionm
+  :type 'boolean)
+
 (defcustom psessionm-object-to-save-alist
   '((extended-command-history . "extended-command-history.el")
     (helm-external-command-history . "helm-external-command-history.el")
     (helm-surfraw-engines-history . "helm-surfraw-engines-history.el")
     (psessionm--save-buffers-alist . "psessionm-save-buffers-alist.el")
     (helm-ff-history . "helm-ff-history.el")
+    (helm-browse-project-history . "helm-browse-project-history.el")
     (regexp-search-ring . "regexp-search-ring.el")
     (search-ring . "search-ring.el")
     (file-name-history . "file-name-history.el")
@@ -259,8 +270,10 @@ Arg CONF is an entry in `psessionm--winconf-alist'."
                (with-current-buffer (find-file-noselect f 'nowarn)
                  (goto-char p)
                  (push-mark p 'nomsg)
-                 (progress-reporter-update progress-reporter count)))
-      (progress-reporter-done progress-reporter))))
+                 ;; (progress-reporter-update progress-reporter count)
+                 ))
+      ;; (progress-reporter-done progress-reporter)
+      )))
 
 (defun psessionm-savehist-hook ()
   (unless (or (eq minibuffer-history-variable t)
@@ -293,6 +306,8 @@ Arg CONF is an entry in `psessionm--winconf-alist'."
   (psessionm-save-last-winconf)
   (psessionm--dump-some-buffers-to-list)
   (psessionm--dump-object-to-file-save-alist)
+
+  (setq psessionm-chosen-session-directory psessionm-elisp-objects-default-directory)
   )
 
 (defun psessionm-restore-session (directory)
@@ -305,17 +320,68 @@ Arg CONF is an entry in `psessionm--winconf-alist'."
   (psessionm--restore-objects-from-directory)
   (psessionm--restore-some-buffers)
   (psessionm-restore-last-winconf)
+
+  (setq psessionm-chosen-session-directory psessionm-elisp-objects-default-directory)
+  )
+
+(defun psessionm-enable-auto-save ()
+  "Enable autosave."
+  (interactive)
+  (setq psessionm-auto-save t)
+
+  (add-hook 'kill-emacs-hook 'psessionm--dump-object-to-file-save-alist)
+  (add-hook 'kill-emacs-hook 'psessionm--dump-some-buffers-to-list)
+  (add-hook 'kill-emacs-hook 'psessionm-save-last-winconf)
+  )
+
+(defun psessionm-disable-auto-save ()
+  "Enable autosave."
+  (interactive)
+  (setq psessionm-auto-save nil)
+
+  (remove-hook 'kill-emacs-hook 'psessionm--dump-object-to-file-save-alist)
+  (remove-hook 'kill-emacs-hook 'psessionm--dump-some-buffers-to-list)
+  (remove-hook 'kill-emacs-hook 'psessionm-save-last-winconf)
+  )
+
+(defun psessionm-restore (type)
+  (interactive)
+  (when (eq type 'object)
+    (psessionm--restore-objects-from-directory psessionm-elisp-objects-default-directory))
+  (when (eq type 'buffer)
+    (psessionm--restore-some-buffers))
+  (when (eq type 'winconf)
+    (psessionm-restore-last-winconf))
   )
 
 ;;;###autoload
 (define-minor-mode psessionm-mode
-    "Persistent emacs sessions."
+  "Persistent emacs sessions."
   :global t
   (if psessionm-mode
       (progn
         (unless (file-directory-p psessionm-elisp-objects-default-directory)
           (make-directory psessionm-elisp-objects-default-directory t))
+
+        (setq psessionm-chosen-session-directory psessionm-elisp-objects-default-directory)
+
+        (when psessionm-auto-save
+          (add-hook 'kill-emacs-hook 'psessionm--dump-object-to-file-save-alist)
+          (add-hook 'kill-emacs-hook 'psessionm--dump-some-buffers-to-list)
+          (add-hook 'kill-emacs-hook 'psessionm-save-last-winconf)
+          )
+        (when psessionm-auto-restore
+          (add-hook 'emacs-startup-hook 'psessionm--restore-objects-from-directory)
+          (add-hook 'emacs-startup-hook 'psessionm--restore-some-buffers 'append)
+          (add-hook 'emacs-startup-hook 'psessionm-restore-last-winconf 'append)
+          )
         )
+    (remove-hook 'kill-emacs-hook 'psessionm--dump-object-to-file-save-alist)
+    (remove-hook 'kill-emacs-hook 'psessionm--dump-some-buffers-to-list)
+    (remove-hook 'kill-emacs-hook 'psessionm-save-last-winconf)
+    (remove-hook 'emacs-startup-hook 'psessionm--restore-objects-from-directory)
+    (remove-hook 'emacs-startup-hook 'psessionm--restore-some-buffers)
+    (remove-hook 'emacs-startup-hook 'psessionm-restore-last-winconf)
     ))
 
 
